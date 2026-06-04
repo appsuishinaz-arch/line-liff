@@ -21,11 +21,19 @@
   textarea,select{width:100%;padding:11px 12px;font-size:16px;border:1px solid var(--gray);border-radius:8px;background:#fff;font-family:inherit;}
   textarea{min-height:120px;resize:vertical;}
   textarea:focus,select:focus{outline:none;border-color:var(--line);}
-  .files{display:flex;flex-direction:column;gap:8px;margin-top:4px;}
-  .file-row input[type=file]{width:100%;font-size:13px;}
+  .btn{border:none;border-radius:8px;font-size:15px;font-weight:700;padding:12px 16px;cursor:pointer;font-family:inherit;}
+  .btn-sub{background:#eef0f2;color:var(--ink);width:100%;}
+  .btn-line{background:var(--line);color:#fff;width:100%;font-size:16px;padding:14px;margin-top:8px;}.btn-line:active{background:var(--line-dark);}
+  .btn:disabled{opacity:.5;}
+  .att-list{display:flex;flex-direction:column;gap:8px;margin-bottom:8px;}
+  .chip{display:flex;align-items:center;gap:10px;border:1px solid var(--gray);border-radius:8px;padding:8px 10px;background:#fafafa;}
+  .chip .thumb{width:40px;height:40px;border-radius:6px;object-fit:cover;background:#eee;flex:none;}
+  .chip .meta{flex:1;min-width:0;}
+  .chip .nm{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .chip .sz{font-size:11px;color:var(--sub);}
+  .chip .rm{flex:none;width:28px;height:28px;border-radius:50%;border:none;background:#f0f0f0;color:#888;font-size:16px;cursor:pointer;}
+  .chip .rm:active{background:#e0e0e0;}
   .file-hint{font-size:12px;color:var(--sub);margin-top:6px;}
-  .btn{border:none;border-radius:8px;font-size:16px;font-weight:700;padding:14px;cursor:pointer;font-family:inherit;width:100%;margin-top:8px;}
-  .btn-line{background:var(--line);color:#fff;}.btn-line:active{background:var(--line-dark);}.btn:disabled{opacity:.5;}
   .msg{font-size:13px;padding:10px 12px;border-radius:8px;margin-top:10px;display:none;}.msg.err{background:#fdecea;color:#b3261e;display:block;}
   .done{text-align:center;padding:48px 16px;display:none;}.done .check{font-size:48px;}.done h2{font-size:18px;margin:12px 0 6px;}
   .done p{color:var(--sub);font-size:14px;}
@@ -57,12 +65,11 @@
     <div class="sec-title">お問い合わせ内容</div>
     <label>内容<span class="req">必須</span></label>
     <textarea id="body" placeholder="ご質問・ご相談の内容を具体的にご入力ください。"></textarea>
-    <label style="margin-top:14px">添付ファイル<span class="opt">任意・1ファイル3MBまで・最大3つ</span></label>
-    <div class="files">
-      <input type="file" class="att" accept="image/*,.pdf">
-      <input type="file" class="att" accept="image/*,.pdf">
-      <input type="file" class="att" accept="image/*,.pdf">
-    </div>
+
+    <label style="margin-top:14px">写真・ファイル添付<span class="opt">任意・最大3つ・写真は自動で軽くします</span></label>
+    <div class="att-list" id="attList"></div>
+    <button type="button" class="btn btn-sub" id="addFileBtn">＋ 写真・ファイルを追加</button>
+    <input type="file" id="fileInput" accept="image/*,.pdf" style="display:none">
     <div class="file-hint">写真は不具合箇所が分かるものだと対応がスムーズです。</div>
   </div>
 
@@ -79,11 +86,17 @@
 <script>
   // ===== 設定（ここだけ書き換える）=====
   var LIFF_ID = '2010296392-ndiczLvq';
-  var GAS_URL = 'https://script.google.com/macros/s/AKfycbybgmPqNA_YSfQCjlF7T51FyJHNuK9sx4ueiLeyNfCQ9wC6xbdaA9-2gFXlj84IRhANPQ/exec';
+  var GAS_URL = 'ここにGASの /exec URL を貼る';
   // =====================================
 
   var CATEGORY = (new URLSearchParams(location.search).get('category')) || '';
   var profile = { userId:'', displayName:'' };
+
+  var MAX_FILES = 3;
+  var IMG_MAX_DIM = 1600;     // 画像の長辺上限（px）
+  var IMG_QUALITY = 0.8;      // JPEG品質
+  var PDF_MAX = 5 * 1024 * 1024; // PDFはこのサイズまで（圧縮できないため）
+  var attachments = [];       // { name, mimeType, data(base64), bytes, preview }
 
   window.addEventListener('load', boot);
 
@@ -104,12 +117,90 @@
     document.getElementById('app').classList.remove('hidden');
     if(CATEGORY){ document.getElementById('catBadge').textContent = catLabel(CATEGORY); }
     else { document.getElementById('catBadge').classList.add('hidden'); document.getElementById('catPickCard').classList.remove('hidden'); }
+    document.getElementById('addFileBtn').addEventListener('click', function(){ document.getElementById('fileInput').click(); });
+    document.getElementById('fileInput').addEventListener('change', onFilePicked);
     document.getElementById('submitBtn').addEventListener('click', submit);
   }
 
   function catLabel(c){ return {'設備不具合':'設備の不具合','家賃':'家賃などの支払いについて','その他':'その他のお問い合わせ'}[c]||c; }
   function getCategory(){ return CATEGORY || document.getElementById('catSelect').value; }
 
+  // ===== 添付：追加 =====
+  function onFilePicked(e){
+    clearError();
+    var file = e.target.files[0];
+    e.target.value = ''; // 同じファイルを再選択できるようにリセット
+    if(!file) return;
+    if(attachments.length >= MAX_FILES){ showError('添付は最大' + MAX_FILES + 'つまでです'); return; }
+
+    var isImage = /^image\//.test(file.type) || /\.(jpe?g|png|gif|heic|heif|webp)$/i.test(file.name);
+    var isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
+
+    if(isImage){
+      compressImage(file).then(function(item){
+        attachments.push(item); renderChips();
+      }).catch(function(){ showError('画像の処理に失敗しました'); });
+    } else if(isPdf){
+      if(file.size > PDF_MAX){ showError('PDFは5MBまでです（' + fmtSize(file.size) + '）'); return; }
+      toBase64(file).then(function(b64){
+        attachments.push({ name:file.name, mimeType:'application/pdf', data:b64, bytes:file.size, preview:null });
+        renderChips();
+      }).catch(function(){ showError('ファイルの読み込みに失敗しました'); });
+    } else {
+      showError('画像かPDFを選んでください');
+    }
+  }
+
+  // 画像を縮小＋JPEG化（HEIC含めcanvas経由でJPEGに正規化）
+  function compressImage(file){
+    return new Promise(function(resolve, reject){
+      var url = URL.createObjectURL(file);
+      var img = new Image();
+      img.onload = function(){
+        var w = img.naturalWidth, h = img.naturalHeight;
+        var scale = Math.min(1, IMG_MAX_DIM / Math.max(w, h));
+        w = Math.round(w*scale); h = Math.round(h*scale);
+        var c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        c.getContext('2d').drawImage(img, 0, 0, w, h);
+        URL.revokeObjectURL(url);
+        var dataUrl = c.toDataURL('image/jpeg', IMG_QUALITY);
+        var b64 = dataUrl.split(',')[1];
+        resolve({
+          name: file.name.replace(/\.[^.]+$/, '') + '.jpg',
+          mimeType: 'image/jpeg',
+          data: b64,
+          bytes: Math.round(b64.length * 3 / 4),
+          preview: dataUrl
+        });
+      };
+      img.onerror = function(){ URL.revokeObjectURL(url); reject(new Error('decode failed')); };
+      img.src = url;
+    });
+  }
+
+  // ===== 添付：表示・削除 =====
+  function renderChips(){
+    var box = document.getElementById('attList');
+    box.innerHTML = '';
+    attachments.forEach(function(a, i){
+      var row = document.createElement('div');
+      row.className = 'chip';
+      var thumb = a.preview
+        ? '<img class="thumb" src="' + a.preview + '">'
+        : '<div class="thumb" style="display:flex;align-items:center;justify-content:center;font-size:11px;color:#999">PDF</div>';
+      row.innerHTML = thumb
+        + '<div class="meta"><div class="nm">' + esc(a.name) + '</div><div class="sz">' + fmtSize(a.bytes) + '</div></div>'
+        + '<button type="button" class="rm" data-i="' + i + '">✕</button>';
+      box.appendChild(row);
+    });
+    Array.prototype.forEach.call(box.querySelectorAll('.rm'), function(btn){
+      btn.addEventListener('click', function(){ attachments.splice(parseInt(btn.getAttribute('data-i'),10),1); renderChips(); });
+    });
+    document.getElementById('addFileBtn').style.display = (attachments.length >= MAX_FILES) ? 'none' : 'block';
+  }
+
+  // ===== 送信 =====
   function submit(){
     clearError();
     var category = getCategory();
@@ -117,21 +208,18 @@
     if(!category) return showError('お問い合わせの種類を選択してください');
     if(!bodyText) return showError('お問い合わせ内容を入力してください');
 
-    var files = collectFiles();
-    if(files.error) return showError(files.error);
-
     var btn = document.getElementById('submitBtn');
     btn.disabled = true; btn.textContent = '送信中…';
 
-    readAll(files.list).then(function(attachments){
-      var idToken = liff.getIDToken();
-      return postToGas({
-        formType: 'inquiry',
-        idToken: idToken,
-        category: category,
-        body: bodyText,
-        attachments: attachments
-      });
+    var idToken = liff.getIDToken();
+    var payloadAtt = attachments.map(function(a){ return { name:a.name, mimeType:a.mimeType, data:a.data }; });
+
+    postToGas({
+      formType: 'inquiry',
+      idToken: idToken,
+      category: category,
+      body: bodyText,
+      attachments: payloadAtt
     }).then(function(){
       document.getElementById('app').classList.add('hidden');
       document.getElementById('done').style.display='block';
@@ -142,44 +230,21 @@
     });
   }
 
-  function collectFiles(){
-    var inputs = document.querySelectorAll('.att');
-    var list = [];
-    for(var i=0;i<inputs.length;i++){
-      var f = inputs[i].files[0];
-      if(!f) continue;
-      if(f.size > 3*1024*1024) return { error:'「'+f.name+'」は3MBを超えています' };
-      list.push(f);
-    }
-    return { list:list };
-  }
-
-  // ファイルをbase64化して配列で返す
-  function readAll(files){
-    var out = [];
-    var chain = Promise.resolve();
-    files.forEach(function(f){
-      chain = chain.then(function(){
-        return toBase64(f).then(function(b64){ out.push({ data:b64, mimeType:f.type, name:f.name }); });
-      });
-    });
-    return chain.then(function(){ return out; });
-  }
   function toBase64(file){
     return new Promise(function(res,rej){
       var r = new FileReader();
       r.onload = function(){ res(String(r.result).split(',')[1]); };
-      r.onerror = function(){ rej(new Error('ファイル読み込み失敗')); };
+      r.onerror = function(){ rej(new Error('read failed')); };
       r.readAsDataURL(file);
     });
   }
-
   function postToGas(payload){
     return fetch(GAS_URL, { method:'POST', mode:'no-cors', body: JSON.stringify(payload) });
   }
-
+  function fmtSize(b){ return b < 1024*1024 ? Math.max(1,Math.round(b/1024)) + ' KB' : (b/1024/1024).toFixed(1) + ' MB'; }
   function showError(t){ var m=document.getElementById('msg'); m.textContent=t; m.className='msg err'; }
   function clearError(){ var m=document.getElementById('msg'); m.textContent=''; m.className='msg'; }
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
 </script>
 </body>
 </html>
