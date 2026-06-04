@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>お問い合わせ</title>
+<script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<style>
+  :root{--line:#06C755;--line-dark:#05a648;--ink:#1f2328;--sub:#6b7280;--gray:#e5e7eb;--bg:#f6f7f9;--req:#e8453c;}
+  *{box-sizing:border-box;}
+  body{font-family:'Hiragino Sans','Noto Sans JP',sans-serif;margin:0;background:var(--bg);color:var(--ink);font-size:15px;line-height:1.6;-webkit-text-size-adjust:100%;}
+  .wrap{max-width:560px;margin:0 auto;padding:16px 16px 40px;}
+  .head{text-align:center;padding:8px 0 16px;}
+  .head h1{font-size:18px;margin:0 0 4px;}.head p{font-size:13px;color:var(--sub);margin:0;}
+  .cat-badge{display:inline-block;background:#e7f8ee;color:var(--line-dark);font-weight:700;font-size:13px;border-radius:6px;padding:3px 12px;margin-top:6px;}
+  .card{background:#fff;border:1px solid var(--gray);border-radius:12px;padding:16px;margin-bottom:14px;}
+  .sec-title{font-size:14px;font-weight:700;margin:0 0 12px;}
+  label{display:block;font-size:13px;font-weight:600;margin:12px 0 4px;}label:first-of-type{margin-top:0;}
+  .req{color:#fff;background:var(--req);font-size:10px;border-radius:3px;padding:1px 5px;margin-left:6px;vertical-align:1px;}
+  .opt{color:var(--sub);font-size:11px;margin-left:6px;}
+  textarea,select{width:100%;padding:11px 12px;font-size:16px;border:1px solid var(--gray);border-radius:8px;background:#fff;font-family:inherit;}
+  textarea{min-height:120px;resize:vertical;}
+  textarea:focus,select:focus{outline:none;border-color:var(--line);}
+  .files{display:flex;flex-direction:column;gap:8px;margin-top:4px;}
+  .file-row input[type=file]{width:100%;font-size:13px;}
+  .file-hint{font-size:12px;color:var(--sub);margin-top:6px;}
+  .btn{border:none;border-radius:8px;font-size:16px;font-weight:700;padding:14px;cursor:pointer;font-family:inherit;width:100%;margin-top:8px;}
+  .btn-line{background:var(--line);color:#fff;}.btn-line:active{background:var(--line-dark);}.btn:disabled{opacity:.5;}
+  .msg{font-size:13px;padding:10px 12px;border-radius:8px;margin-top:10px;display:none;}.msg.err{background:#fdecea;color:#b3261e;display:block;}
+  .done{text-align:center;padding:48px 16px;display:none;}.done .check{font-size:48px;}.done h2{font-size:18px;margin:12px 0 6px;}
+  .done p{color:var(--sub);font-size:14px;}
+  .loading{text-align:center;padding:60px 16px;color:var(--sub);}.hidden{display:none;}
+</style>
+</head>
+<body>
+
+<div id="loading" class="loading">読み込み中…</div>
+
+<div id="app" class="wrap hidden">
+  <div class="head">
+    <h1>ご入居者様 お問い合わせ</h1>
+    <p>下記をご入力のうえ送信してください。</p>
+    <div class="cat-badge" id="catBadge"></div>
+  </div>
+
+  <div class="card hidden" id="catPickCard">
+    <div class="sec-title">お問い合わせの種類<span class="req">必須</span></div>
+    <select id="catSelect">
+      <option value="">選択してください</option>
+      <option value="設備不具合">設備不具合</option>
+      <option value="家賃">家賃などの支払いについて</option>
+      <option value="その他">その他のお問い合わせ</option>
+    </select>
+  </div>
+
+  <div class="card">
+    <div class="sec-title">お問い合わせ内容</div>
+    <label>内容<span class="req">必須</span></label>
+    <textarea id="body" placeholder="ご質問・ご相談の内容を具体的にご入力ください。"></textarea>
+    <label style="margin-top:14px">添付ファイル<span class="opt">任意・1ファイル3MBまで・最大3つ</span></label>
+    <div class="files">
+      <input type="file" class="att" accept="image/*,.pdf">
+      <input type="file" class="att" accept="image/*,.pdf">
+      <input type="file" class="att" accept="image/*,.pdf">
+    </div>
+    <div class="file-hint">写真は不具合箇所が分かるものだと対応がスムーズです。</div>
+  </div>
+
+  <div id="msg" class="msg"></div>
+  <button class="btn btn-line" id="submitBtn">送信する</button>
+</div>
+
+<div id="done" class="done">
+  <div class="check">✅</div>
+  <h2>お問い合わせを受け付けました</h2>
+  <p>受付番号はLINEのトークにお送りします。<br>担当者より追ってご連絡いたします。</p>
+</div>
+
+<script>
+  // ===== 設定（ここだけ書き換える）=====
+  var LIFF_ID = '2010296392-ndiczLvq';
+  var GAS_URL = 'ここにGASの /exec URL を貼る';
+  // =====================================
+
+  var CATEGORY = (new URLSearchParams(location.search).get('category')) || '';
+  var profile = { userId:'', displayName:'' };
+
+  window.addEventListener('load', boot);
+
+  function boot(){
+    liff.init({ liffId: LIFF_ID })
+      .then(function(){
+        if(!liff.isLoggedIn()){ liff.login(); return; }
+        return liff.getProfile().then(function(p){
+          profile.userId = p.userId; profile.displayName = p.displayName||'';
+          ready();
+        });
+      })
+      .catch(function(e){ document.getElementById('loading').textContent = 'LIFF初期化エラー: ' + e; });
+  }
+
+  function ready(){
+    document.getElementById('loading').classList.add('hidden');
+    document.getElementById('app').classList.remove('hidden');
+    if(CATEGORY){ document.getElementById('catBadge').textContent = catLabel(CATEGORY); }
+    else { document.getElementById('catBadge').classList.add('hidden'); document.getElementById('catPickCard').classList.remove('hidden'); }
+    document.getElementById('submitBtn').addEventListener('click', submit);
+  }
+
+  function catLabel(c){ return {'設備不具合':'設備の不具合','家賃':'家賃などの支払いについて','その他':'その他のお問い合わせ'}[c]||c; }
+  function getCategory(){ return CATEGORY || document.getElementById('catSelect').value; }
+
+  function submit(){
+    clearError();
+    var category = getCategory();
+    var bodyText = document.getElementById('body').value.trim();
+    if(!category) return showError('お問い合わせの種類を選択してください');
+    if(!bodyText) return showError('お問い合わせ内容を入力してください');
+
+    var files = collectFiles();
+    if(files.error) return showError(files.error);
+
+    var btn = document.getElementById('submitBtn');
+    btn.disabled = true; btn.textContent = '送信中…';
+
+    readAll(files.list).then(function(attachments){
+      var idToken = liff.getIDToken();
+      return postToGas({
+        formType: 'inquiry',
+        idToken: idToken,
+        category: category,
+        body: bodyText,
+        attachments: attachments
+      });
+    }).then(function(){
+      document.getElementById('app').classList.add('hidden');
+      document.getElementById('done').style.display='block';
+      if(liff.isInClient && liff.isInClient()){ setTimeout(function(){ liff.closeWindow(); }, 2500); }
+    }).catch(function(e){
+      btn.disabled=false; btn.textContent='送信する';
+      showError('送信エラー: '+e);
+    });
+  }
+
+  function collectFiles(){
+    var inputs = document.querySelectorAll('.att');
+    var list = [];
+    for(var i=0;i<inputs.length;i++){
+      var f = inputs[i].files[0];
+      if(!f) continue;
+      if(f.size > 3*1024*1024) return { error:'「'+f.name+'」は3MBを超えています' };
+      list.push(f);
+    }
+    return { list:list };
+  }
+
+  // ファイルをbase64化して配列で返す
+  function readAll(files){
+    var out = [];
+    var chain = Promise.resolve();
+    files.forEach(function(f){
+      chain = chain.then(function(){
+        return toBase64(f).then(function(b64){ out.push({ data:b64, mimeType:f.type, name:f.name }); });
+      });
+    });
+    return chain.then(function(){ return out; });
+  }
+  function toBase64(file){
+    return new Promise(function(res,rej){
+      var r = new FileReader();
+      r.onload = function(){ res(String(r.result).split(',')[1]); };
+      r.onerror = function(){ rej(new Error('ファイル読み込み失敗')); };
+      r.readAsDataURL(file);
+    });
+  }
+
+  function postToGas(payload){
+    return fetch(GAS_URL, { method:'POST', mode:'no-cors', body: JSON.stringify(payload) });
+  }
+
+  function showError(t){ var m=document.getElementById('msg'); m.textContent=t; m.className='msg err'; }
+  function clearError(){ var m=document.getElementById('msg'); m.textContent=''; m.className='msg'; }
+</script>
+</body>
+</html>
