@@ -26,7 +26,7 @@
   .btn-sub{background:#eef0f2;color:var(--ink);}
   .btn-line{background:var(--line);color:#fff;}.btn-line:active{background:var(--line-dark);}
   .btn-block{width:100%;padding:14px;font-size:16px;margin-top:8px;}.btn:disabled{opacity:.5;}
-  .results{margin-top:10px;display:flex;flex-direction:column;gap:8px;}
+  .results{margin-top:10px;display:flex;flex-direction:column;gap:8px;max-height:320px;overflow-y:auto;}
   .result{border:1px solid var(--gray);border-radius:8px;padding:10px 12px;cursor:pointer;background:#fff;}
   .result:active{background:#f0fbf4;}.result .nm{font-weight:700;font-size:14px;}.result .ad{font-size:12px;color:var(--sub);margin-top:2px;}
   .area-tag{font-size:11px;color:var(--line-dark);background:#e7f8ee;border-radius:4px;padding:1px 6px;}
@@ -47,18 +47,27 @@
 <div id="app" class="wrap hidden">
   <div class="head">
     <h1>ご入居者様 基本情報の登録</h1>
-    <p>お問い合わせの前に、お住まいの建物とご連絡先をご登録ください。</p>
+    <p>お問い合わせの前に、ご連絡先とお住まいの建物をご登録ください。</p>
   </div>
 
   <div class="card">
-    <div class="sec-title"><span class="sec-no">1</span>お住まいの建物<span class="req">必須</span></div>
+    <div class="sec-title"><span class="sec-no">1</span>ご連絡先</div>
+    <label>お名前<span class="req">必須</span></label>
+    <input type="text" id="name" placeholder="例）安須 太郎">
+    <label>電話番号</label>
+    <input type="tel" id="tel" placeholder="例）09000000000" inputmode="numeric">
+    <label>メールアドレス<span class="req">必須</span></label>
+    <input type="email" id="email" placeholder="例）test@example.com">
+  </div>
+
+  <div class="card">
+    <div class="sec-title"><span class="sec-no">2</span>お住まいの建物<span class="req">必須</span></div>
     <div id="buildingPick">
       <div class="search-row">
         <input type="text" id="kw" placeholder="建物名で検索（例：グレース）" autocomplete="off">
-        <button class="btn btn-sub" id="searchBtn">検索</button>
       </div>
       <div class="results" id="results"></div>
-      <p class="hint" id="searchHint"></p>
+      <p class="hint" id="searchHint">建物名を入力すると候補が表示されます。</p>
     </div>
     <div id="buildingSelected" class="selected hidden">
       <div><div class="nm" id="selName"></div><div class="ad" id="selAddr"></div></div>
@@ -66,16 +75,6 @@
     </div>
     <label style="margin-top:14px">部屋番号<span class="req">必須</span></label>
     <input type="text" id="room" placeholder="例）301">
-  </div>
-
-  <div class="card">
-    <div class="sec-title"><span class="sec-no">2</span>ご連絡先</div>
-    <label>お名前<span class="req">必須</span></label>
-    <input type="text" id="name" placeholder="例）安須 太郎">
-    <label>電話番号</label>
-    <input type="tel" id="tel" placeholder="例）06-0000-0000">
-    <label>メールアドレス<span class="req">必須</span></label>
-    <input type="email" id="email" placeholder="例）test@example.com">
   </div>
 
   <div class="card">
@@ -100,8 +99,12 @@
   var GAS_URL = 'https://script.google.com/macros/s/AKfycbybgmPqNA_YSfQCjlF7T51FyJHNuK9sx4ueiLeyNfCQ9wC6xbdaA9-2gFXlj84IRhANPQ/exec';
   // =====================================
 
+  var MAX_RESULTS = 30;
   var profile = { userId:'', displayName:'' };
   var selectedBuilding = null;
+  var ALL_BUILDINGS = null;   // null=未ロード / 配列=ロード済み
+  var loadFailed = false;
+  var pendingFilter = false;
 
   window.addEventListener('load', boot);
 
@@ -121,30 +124,63 @@
   function ready(){
     document.getElementById('loading').classList.add('hidden');
     document.getElementById('app').classList.remove('hidden');
-    document.getElementById('searchBtn').addEventListener('click', doSearch);
-    document.getElementById('kw').addEventListener('keydown', function(e){ if(e.key==='Enter') doSearch(); });
+    document.getElementById('kw').addEventListener('input', doFilter);
     document.getElementById('changeBtn').addEventListener('click', clearSelection);
     document.getElementById('submitBtn').addEventListener('click', submit);
     document.getElementById('ppLink').addEventListener('click', function(e){ e.preventDefault(); alert('プライバシーポリシー文面はクライアント側で差し替え。'); });
+    prefetchBuildings(); // 裏で建物全件を1回だけ取得（名前など入力してる間にロード完了）
   }
 
-  // 建物検索（JSONP）
-  function doSearch(){
+  // 開いた瞬間に全件取得 → 以降はネット無しでローカル絞り込み
+  function prefetchBuildings(){
+    jsonp('allBuildings', {}, function(list){
+      if(Array.isArray(list)){ ALL_BUILDINGS = list; }
+      else { loadFailed = true; }
+      if(pendingFilter){ pendingFilter = false; doFilter(); }
+    });
+  }
+
+  // ローカル絞り込み（入力のたび即実行・ネットワーク無し）
+  function doFilter(){
     var kw = document.getElementById('kw').value.trim();
     var hint = document.getElementById('searchHint');
-    document.getElementById('results').innerHTML = '';
-    hint.textContent = '検索中…';
-    jsonp('searchBuildings', { kw: kw }, function(list){
-      hint.textContent = list.length ? '' : '該当する建物が見つかりませんでした。';
-      var box = document.getElementById('results');
-      list.forEach(function(b){
-        var el = document.createElement('div');
-        el.className = 'result';
-        el.innerHTML = '<div class="nm">'+esc(b.name)+' <span class="area-tag">'+esc(b.area)+'</span></div>'
-                     + '<div class="ad">'+esc((b.pref||'')+(b.addr||''))+'</div>';
-        el.addEventListener('click', function(){ selectBuilding(b); });
-        box.appendChild(el);
-      });
+    var box = document.getElementById('results');
+    box.innerHTML = '';
+
+    if(!kw){ hint.textContent = '建物名を入力すると候補が表示されます。'; return; }
+
+    if(ALL_BUILDINGS === null){
+      if(loadFailed){ serverSearch(kw); return; } // ロード失敗時はサーバ検索にフォールバック
+      hint.textContent = '建物リストを読み込み中…'; pendingFilter = true; return;
+    }
+
+    var k = kw.toLowerCase();
+    var hits = ALL_BUILDINGS.filter(function(b){
+      var hay = ((b.name||'') + (b.area||'') + (b.pref||'') + (b.addr||'')).toLowerCase();
+      return hay.indexOf(k) >= 0;
+    });
+    renderResults(hits.slice(0, MAX_RESULTS), hits.length);
+  }
+
+  // フォールバック：サーバ側検索（プレフェッチ失敗時のみ）
+  function serverSearch(kw){
+    document.getElementById('searchHint').textContent = '検索中…';
+    jsonp('searchBuildings', { kw: kw }, function(list){ renderResults(list||[], (list||[]).length); });
+  }
+
+  function renderResults(list, total){
+    var hint = document.getElementById('searchHint');
+    var box = document.getElementById('results');
+    box.innerHTML = '';
+    if(!list.length){ hint.textContent = '該当する建物が見つかりませんでした。'; return; }
+    hint.textContent = (total > list.length) ? ('候補が多いため先頭'+list.length+'件を表示中。さらに絞り込んでください。') : '';
+    list.forEach(function(b){
+      var el = document.createElement('div');
+      el.className = 'result';
+      el.innerHTML = '<div class="nm">'+esc(b.name)+' <span class="area-tag">'+esc(b.area)+'</span></div>'
+                   + '<div class="ad">'+esc((b.pref||'')+(b.addr||''))+'</div>';
+      el.addEventListener('click', function(){ selectBuilding(b); });
+      box.appendChild(el);
     });
   }
 
@@ -159,6 +195,7 @@
     selectedBuilding = null;
     document.getElementById('results').innerHTML='';
     document.getElementById('kw').value='';
+    document.getElementById('searchHint').textContent='建物名を入力すると候補が表示されます。';
     document.getElementById('buildingPick').classList.remove('hidden');
     document.getElementById('buildingSelected').classList.add('hidden');
   }
@@ -191,12 +228,12 @@
   }
 
   function validate(){
-    if(!selectedBuilding) return '建物を選択してください';
-    if(!document.getElementById('room').value.trim()) return '部屋番号を入力してください';
     if(!document.getElementById('name').value.trim()) return 'お名前を入力してください';
     var email = document.getElementById('email').value.trim();
     if(!email) return 'メールアドレスを入力してください';
     if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return 'メールアドレスの形式が正しくありません';
+    if(!selectedBuilding) return '建物を選択してください';
+    if(!document.getElementById('room').value.trim()) return '部屋番号を入力してください';
     if(!document.getElementById('agree').checked) return 'プライバシーポリシーへの同意が必要です';
     return null;
   }
@@ -207,7 +244,7 @@
     var s = document.createElement('script');
     window[cbName] = function(data){ try{ cb(data); } finally { delete window[cbName]; if(s.parentNode) s.parentNode.removeChild(s); } };
     var qs = Object.keys(params).map(function(k){ return encodeURIComponent(k)+'='+encodeURIComponent(params[k]); }).join('&');
-    s.src = GAS_URL + '?action='+action+'&'+qs+'&callback='+cbName;
+    s.src = GAS_URL + '?action='+action+(qs?('&'+qs):'')+'&callback='+cbName;
     s.onerror = function(){ window[cbName]([]); };
     document.body.appendChild(s);
   }
