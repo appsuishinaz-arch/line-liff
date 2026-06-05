@@ -207,10 +207,10 @@
     var btn = document.getElementById('submitBtn');
     btn.disabled = true; btn.textContent = '登録中…';
 
-    var idToken = liff.getIDToken();
+    var accessToken = liff.getAccessToken();
     postToGas({
       formType: 'register',
-      idToken: idToken,
+      accessToken: accessToken,
       displayName: profile.displayName,
       buildingId: selectedBuilding.id,
       room: document.getElementById('room').value.trim(),

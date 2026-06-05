@@ -211,12 +211,12 @@
     var btn = document.getElementById('submitBtn');
     btn.disabled = true; btn.textContent = '送信中…';
 
-    var idToken = liff.getIDToken();
+    var accessToken = liff.getAccessToken();
     var payloadAtt = attachments.map(function(a){ return { name:a.name, mimeType:a.mimeType, data:a.data }; });
 
     postToGas({
       formType: 'inquiry',
-      idToken: idToken,
+      accessToken: accessToken,
       category: category,
       body: bodyText,
       attachments: payloadAtt
