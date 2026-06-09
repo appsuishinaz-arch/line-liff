@@ -116,7 +116,7 @@
           profile.userId = p.userId;
           profile.displayName = p.displayName || '';
           ready();
-        });
+        }).catch(function(){ liff.login({ redirectUri: location.href }); });  // トークン切れ等→再ログイン
       })
       .catch(function(e){ document.getElementById('loading').textContent = 'LIFF初期化エラー: ' + e; });
   }
