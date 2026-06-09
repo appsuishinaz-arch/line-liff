@@ -111,32 +111,35 @@
   function boot(){
     liff.init({ liffId: LIFF_ID })
       .then(function(){
-        if(!liff.isLoggedIn()){ liff.login(); return; }
+        if(!liff.isLoggedIn()){ doLogin(); return; }
         return liff.getProfile().then(function(p){
           profile.userId = p.userId;
           profile.displayName = p.displayName || '';
           ready();
-        }).catch(relogin);  // トークン切れ等→一度だけ再ログイン
+        }).catch(function(){ doLogin(); });
       })
       .catch(function(e){
         var m = String((e && e.message) || e);
-        if(m.indexOf('expired')>=0 || m.indexOf('token')>=0){ relogin(); return; }
+        if(m.indexOf('expired')>=0 || m.indexOf('token')>=0){ doLogin(); return; }
         document.getElementById('loading').textContent = 'LIFF初期化エラー: ' + e;
       });
   }
 
-  // トークン切れ時の再ログイン（無限ループ防止のため1回だけ）
-  function relogin(){
-    var hasRetried = location.search.indexOf('_r=1') >= 0;
-    if(hasRetried){
-      document.getElementById('loading').textContent =
-        'ログインの有効期限が切れています。LINEのトーク画面に戻り、メニューからもう一度開いてください。';
-      return;
-    }
+  // 自動ログインは最大1回だけ（?_r=1 で判定）。それ以上はループさせず手動ボタンに
+  function doLogin(){
+    if(location.search.indexOf('_r=1') >= 0){ showRelogin(); return; }
     var sep = location.href.indexOf('?') >= 0 ? '&' : '?';
-    var back = location.href + sep + '_r=1';
-    try { liff.logout(); } catch(e) {}
-    liff.login({ redirectUri: back });
+    liff.login({ redirectUri: location.href + sep + '_r=1' });
+  }
+  function showRelogin(){
+    var el = document.getElementById('loading');
+    el.innerHTML =
+      'ログインの有効期限が切れているか、うまくログインできませんでした。<br><br>'
+      + '<button id="reBtn" style="background:#06c755;color:#fff;border:none;padding:12px 24px;border-radius:8px;font-weight:700;font-size:15px;">ログインし直す</button>'
+      + '<br><br><span style="color:#888;font-size:13px;">解決しない場合は、LINEのトーク画面に戻り、メニューからもう一度開いてください。</span>';
+    document.getElementById('reBtn').addEventListener('click', function(){
+      liff.login({ redirectUri: location.href.split('?')[0] });  // フラグを外して1回試す
+    });
   }
 
   function ready(){
@@ -153,7 +156,14 @@
   // 登録済みの内容を読み込んでフォームに反映
   function prefillUser(){
     jsonp('getUser', { uid: profile.userId }, function(u){
-      if(!u) return;
+      if(!u){
+        // 【一時デバッグ】登録が見つからない時、今のアカウントのuserIdを表示（原因切り分け用・確認後に消す）
+        var dbg = document.createElement('div');
+        dbg.style.cssText = 'margin:8px 0;padding:8px;background:#fff8e1;border:1px solid #ffe082;border-radius:6px;font-size:11px;word-break:break-all;color:#666;';
+        dbg.textContent = '[debug] このアカウントの userId: ' + (profile.userId || '(取得できず)');
+        var app = document.getElementById('app'); if(app) app.insertBefore(dbg, app.firstChild);
+        return;
+      }
       if(u.name)  document.getElementById('name').value = u.name;
       if(u.tel)   document.getElementById('tel').value = u.tel;
       if(u.email) document.getElementById('email').value = u.email;
