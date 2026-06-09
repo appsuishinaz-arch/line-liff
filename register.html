@@ -96,7 +96,7 @@
 <script>
   // ===== 設定（ここだけ書き換える）=====
   var LIFF_ID = '2010296392-M3917y47';
-  var GAS_URL = 'https://script.google.com/macros/s/AKfycbybgmPqNA_YSfQCjlF7T51FyJHNuK9sx4ueiLeyNfCQ9wC6xbdaA9-2gFXlj84IRhANPQ/exec';
+  var GAS_URL = 'ここにGASの /exec URL を貼る';
   // =====================================
 
   var MAX_RESULTS = 30;
@@ -129,12 +129,42 @@
     document.getElementById('submitBtn').addEventListener('click', submit);
     document.getElementById('ppLink').addEventListener('click', function(e){ e.preventDefault(); alert('プライバシーポリシー文面はクライアント側で差し替え。'); });
     prefetchBuildings(); // 裏で建物全件を1回だけ取得（名前など入力してる間にロード完了）
+    prefillUser();       // 登録済みなら自分の情報を読み込んで各欄に反映（マイページ表示）
+  }
+
+  // 登録済みの内容を読み込んでフォームに反映
+  function prefillUser(){
+    jsonp('getUser', { uid: profile.userId }, function(u){
+      if(!u) return;
+      if(u.name)  document.getElementById('name').value = u.name;
+      if(u.tel)   document.getElementById('tel').value = u.tel;
+      if(u.email) document.getElementById('email').value = u.email;
+      if(u.room)  document.getElementById('room').value = u.room;
+      if(u.buildingId){
+        var b = { id:u.buildingId, name:u.buildingName||'', area:'', pref:'', addr:'' };
+        if(Array.isArray(ALL_BUILDINGS)){
+          var m = ALL_BUILDINGS.filter(function(x){ return String(x.id)===String(u.buildingId); })[0];
+          if(m) b = m;
+        }
+        selectBuilding(b);
+      }
+    });
   }
 
   // 開いた瞬間に全件取得 → 以降はネット無しでローカル絞り込み
   function prefetchBuildings(){
     jsonp('allBuildings', {}, function(list){
-      if(Array.isArray(list)){ ALL_BUILDINGS = list; }
+      if(Array.isArray(list)){
+        ALL_BUILDINGS = list;
+        // プレフィルで建物を仮表示してた場合、住所などを補完
+        if(selectedBuilding && selectedBuilding.id && !selectedBuilding.addr){
+          var m = list.filter(function(x){ return String(x.id)===String(selectedBuilding.id); })[0];
+          if(m){ selectedBuilding = m;
+            document.getElementById('selName').textContent = m.name||'';
+            document.getElementById('selAddr').textContent = (m.pref||'')+(m.addr||'');
+          }
+        }
+      }
       else { loadFailed = true; }
       if(pendingFilter){ pendingFilter = false; doFilter(); }
     });
