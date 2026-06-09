@@ -155,14 +155,7 @@
 
   // 登録済みの内容を読み込んでフォームに反映
   function prefillUser(){
-    // 【一時デバッグ】必ず表示。userId と getUser の生レスポンスを出す（確認後に消す）
-    var dbg = document.createElement('div');
-    dbg.style.cssText = 'margin:8px 0;padding:8px;background:#fff8e1;border:1px solid #ffe082;border-radius:6px;font-size:11px;word-break:break-all;color:#666;';
-    dbg.textContent = '[debug] userId = ' + (profile.userId || '(空)') + ' ／ getUser 呼び出し中…';
-    var app = document.getElementById('app'); if(app) app.insertBefore(dbg, app.firstChild);
-
     jsonp('getUser', { uid: profile.userId }, function(u){
-      dbg.textContent = '[debug] userId = ' + (profile.userId || '(空)') + ' ／ getUser = ' + JSON.stringify(u);
       if(!u || Array.isArray(u)) return;   // null＝該当なし / 配列＝通信失敗
       if(u.name)  document.getElementById('name').value = u.name;
       if(u.tel)   document.getElementById('tel').value = u.tel;
@@ -298,13 +291,9 @@
 
   // ===== 共通：JSONP（GET読み取り）=====
   function jsonp(action, params, cb){
-    var cbName = 'jsonp_'+Date.now()+'_'+Math.floor(Math.random()*1000);
-    var s = document.createElement('script');
-    window[cbName] = function(data){ try{ cb(data); } finally { delete window[cbName]; if(s.parentNode) s.parentNode.removeChild(s); } };
     var qs = Object.keys(params).map(function(k){ return encodeURIComponent(k)+'='+encodeURIComponent(params[k]); }).join('&');
-    s.src = GAS_URL + '?action='+action+(qs?('&'+qs):'')+'&callback='+cbName;
-    s.onerror = function(){ window[cbName]([]); };
-    document.body.appendChild(s);
+    var url = GAS_URL + '?action='+action + (qs ? ('&'+qs) : '');
+    fetch(url).then(function(r){ return r.json(); }).then(function(data){ cb(data); }).catch(function(){ cb(null); });
   }
 
   // ===== 共通：POST（書き込み・no-corsで送信）=====
