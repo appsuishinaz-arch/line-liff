@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>入居者情報登録</title>
+<script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<style>
+  :root{--line:#06C755;--line-dark:#05a648;--ink:#1f2328;--sub:#6b7280;--gray:#e5e7eb;--bg:#f6f7f9;--req:#e8453c;}
+  *{box-sizing:border-box;}
+  body{font-family:'Hiragino Sans','Noto Sans JP',sans-serif;margin:0;background:var(--bg);color:var(--ink);font-size:15px;line-height:1.6;-webkit-text-size-adjust:100%;}
+  .wrap{max-width:560px;margin:0 auto;padding:16px 16px 40px;}
+  .head{text-align:center;padding:8px 0 16px;}
+  .head h1{font-size:18px;margin:0 0 4px;}
+  .head p{font-size:13px;color:var(--sub);margin:0;}
+  .card{background:#fff;border:1px solid var(--gray);border-radius:12px;padding:16px;margin-bottom:14px;}
+  .sec-title{font-size:14px;font-weight:700;margin:0 0 12px;display:flex;align-items:center;gap:8px;}
+  .sec-no{background:var(--line);color:#fff;width:22px;height:22px;border-radius:50%;font-size:12px;display:inline-flex;align-items:center;justify-content:center;flex:none;}
+  label{display:block;font-size:13px;font-weight:600;margin:12px 0 4px;}
+  label:first-of-type{margin-top:0;}
+  .req{color:#fff;background:var(--req);font-size:10px;border-radius:3px;padding:1px 5px;margin-left:6px;vertical-align:1px;}
+  input[type=text],input[type=tel],input[type=email]{width:100%;padding:11px 12px;font-size:16px;border:1px solid var(--gray);border-radius:8px;background:#fff;}
+  input:focus{outline:none;border-color:var(--line);}
+  .search-row{display:flex;gap:8px;}.search-row input{flex:1;}
+  .btn{border:none;border-radius:8px;font-size:15px;font-weight:700;padding:11px 16px;cursor:pointer;font-family:inherit;}
+  .btn-sub{background:#eef0f2;color:var(--ink);}
+  .btn-line{background:var(--line);color:#fff;}.btn-line:active{background:var(--line-dark);}
+  .btn-block{width:100%;padding:14px;font-size:16px;margin-top:8px;}.btn:disabled{opacity:.5;}
+  .results{margin-top:10px;display:flex;flex-direction:column;gap:8px;max-height:320px;overflow-y:auto;}
+  .result{border:1px solid var(--gray);border-radius:8px;padding:10px 12px;cursor:pointer;background:#fff;}
+  .result:active{background:#f0fbf4;}.result .nm{font-weight:700;font-size:14px;}.result .ad{font-size:12px;color:var(--sub);margin-top:2px;}
+  .area-tag{font-size:11px;color:var(--line-dark);background:#e7f8ee;border-radius:4px;padding:1px 6px;}
+  .selected{border:1px solid var(--line);background:#f0fbf4;border-radius:8px;padding:10px 12px;display:flex;justify-content:space-between;align-items:center;gap:8px;}
+  .selected .nm{font-weight:700;}.selected .ad{font-size:12px;color:var(--sub);}
+  .link{color:var(--line-dark);font-size:13px;background:none;border:none;cursor:pointer;font-weight:700;}
+  .agree{display:flex;align-items:flex-start;gap:8px;font-size:13px;}.agree input{margin-top:3px;}
+  .hint{font-size:12px;color:var(--sub);margin:4px 0 0;}
+  .msg{font-size:13px;padding:10px 12px;border-radius:8px;margin-top:10px;display:none;}.msg.err{background:#fdecea;color:#b3261e;display:block;}
+  .done{text-align:center;padding:48px 16px;display:none;}.done .check{font-size:48px;}.done h2{font-size:18px;margin:12px 0 6px;}.done p{color:var(--sub);font-size:14px;}
+  .loading{text-align:center;padding:60px 16px;color:var(--sub);}.hidden{display:none;}
+</style>
+</head>
+<body>
+
+<div id="loading" class="loading">読み込み中…</div>
+
+<div id="app" class="wrap hidden">
+  <div class="head">
+    <h1>ご入居者様 基本情報の登録</h1>
+    <p>お問い合わせの前に、ご連絡先とお住まいの建物をご登録ください。</p>
+  </div>
+
+  <div class="card">
+    <div class="sec-title"><span class="sec-no">1</span>ご連絡先</div>
+    <label>お名前<span class="req">必須</span></label>
+    <input type="text" id="name" placeholder="例）安須 太郎">
+    <label>電話番号</label>
+    <input type="tel" id="tel" placeholder="例）09000000000" inputmode="numeric">
+    <label>メールアドレス<span class="req">必須</span></label>
+    <input type="email" id="email" placeholder="例）test@example.com">
+  </div>
+
+  <div class="card">
+    <div class="sec-title"><span class="sec-no">2</span>お住まいの建物<span class="req">必須</span></div>
+    <div id="buildingPick">
+      <div class="search-row">
+        <input type="text" id="kw" placeholder="建物名で検索（例：グレース）" autocomplete="off">
+      </div>
+      <div class="results" id="results"></div>
+      <p class="hint" id="searchHint">建物名を入力すると候補が表示されます。</p>
+    </div>
+    <div id="buildingSelected" class="selected hidden">
+      <div><div class="nm" id="selName"></div><div class="ad" id="selAddr"></div></div>
+      <button class="link" id="changeBtn">変更</button>
+    </div>
+    <label style="margin-top:14px">部屋番号<span class="req">必須</span></label>
+    <input type="text" id="room" placeholder="例）301">
+  </div>
+
+  <div class="card">
+    <label class="agree">
+      <input type="checkbox" id="agree">
+      <span><a href="#" id="ppLink">プライバシーポリシー</a>に同意します<span class="req">必須</span></span>
+    </label>
+    <div id="msg" class="msg"></div>
+    <button class="btn btn-line btn-block" id="submitBtn">この内容で登録する</button>
+  </div>
+</div>
+
+<div id="done" class="done">
+  <div class="check">✅</div>
+  <h2>登録が完了しました</h2>
+  <p>このままLINEに戻ってお問い合わせいただけます。</p>
+</div>
+
+<script>
+  // ===== 設定（ここだけ書き換える）=====
+  var LIFF_ID = '2010296392-M3917y47';
+  var GAS_URL = 'https://script.google.com/macros/s/AKfycbybgmPqNA_YSfQCjlF7T51FyJHNuK9sx4ueiLeyNfCQ9wC6xbdaA9-2gFXlj84IRhANPQ/exec';
+  // =====================================
+
+  var MAX_RESULTS = 30;
+  var profile = { userId:'', displayName:'' };
+  var selectedBuilding = null;
+  var ALL_BUILDINGS = null;   // null=未ロード / 配列=ロード済み
+  var loadFailed = false;
+  var pendingFilter = false;
+
+  window.addEventListener('load', boot);
+
+  function boot(){
+    liff.init({ liffId: LIFF_ID })
+      .then(function(){
+        if(!liff.isLoggedIn()){ doLogin(); return; }
+        return liff.getProfile().then(function(p){
+          profile.userId = p.userId;
+          profile.displayName = p.displayName || '';
+          ready();
+        }).catch(function(){ doLogin(); });
+      })
+      .catch(function(e){
+        var m = String((e && e.message) || e);
+        if(m.indexOf('expired')>=0 || m.indexOf('token')>=0){ doLogin(); return; }
+        document.getElementById('loading').textContent = 'LIFF初期化エラー: ' + e;
+      });
+  }
+
+  // 自動ログインは最大1回だけ（?_r=1 で判定）。それ以上はループさせず手動ボタンに
+  function doLogin(){
+    if(location.search.indexOf('_r=1') >= 0){ showRelogin(); return; }
+    var sep = location.href.indexOf('?') >= 0 ? '&' : '?';
+    liff.login({ redirectUri: location.href + sep + '_r=1' });
+  }
+  function showRelogin(){
+    var el = document.getElementById('loading');
+    el.innerHTML =
+      'ログインの有効期限が切れているか、うまくログインできませんでした。<br><br>'
+      + '<button id="reBtn" style="background:#06c755;color:#fff;border:none;padding:12px 24px;border-radius:8px;font-weight:700;font-size:15px;">ログインし直す</button>'
+      + '<br><br><span style="color:#888;font-size:13px;">解決しない場合は、LINEのトーク画面に戻り、メニューからもう一度開いてください。</span>';
+    document.getElementById('reBtn').addEventListener('click', function(){
+      liff.login({ redirectUri: location.href.split('?')[0] });  // フラグを外して1回試す
+    });
+  }
+
+  function ready(){
+    document.getElementById('loading').classList.add('hidden');
+    document.getElementById('app').classList.remove('hidden');
+    document.getElementById('kw').addEventListener('input', doFilter);
+    document.getElementById('changeBtn').addEventListener('click', clearSelection);
+    document.getElementById('submitBtn').addEventListener('click', submit);
+    document.getElementById('ppLink').addEventListener('click', function(e){ e.preventDefault(); alert('プライバシーポリシー文面はクライアント側で差し替え。'); });
+    prefetchBuildings(); // 裏で建物全件を1回だけ取得（名前など入力してる間にロード完了）
+    prefillUser();       // 登録済みなら自分の情報を読み込んで各欄に反映（マイページ表示）
+  }
+
+  // 登録済みの内容を読み込んでフォームに反映
+  function prefillUser(){
+    jsonp('getUser', { uid: profile.userId }, function(u){
+      if(!u || Array.isArray(u)) return;   // null＝該当なし / 配列＝通信失敗
+      if(u.name)  document.getElementById('name').value = u.name;
+      if(u.tel)   document.getElementById('tel').value = u.tel;
+      if(u.email) document.getElementById('email').value = u.email;
+      if(u.room)  document.getElementById('room').value = u.room;
+      if(u.buildingId){
+        var b = { id:u.buildingId, name:u.buildingName||'', area:'', pref:'', addr:'' };
+        if(Array.isArray(ALL_BUILDINGS)){
+          var m = ALL_BUILDINGS.filter(function(x){ return String(x.id)===String(u.buildingId); })[0];
+          if(m) b = m;
+        }
+        selectBuilding(b);
+      }
+    });
+  }
+
+  // 開いた瞬間に全件取得 → 以降はネット無しでローカル絞り込み
+  function prefetchBuildings(){
+    jsonp('allBuildings', {}, function(list){
+      if(Array.isArray(list)){
+        ALL_BUILDINGS = list;
+        // プレフィルで建物を仮表示してた場合、住所などを補完
+        if(selectedBuilding && selectedBuilding.id && !selectedBuilding.addr){
+          var m = list.filter(function(x){ return String(x.id)===String(selectedBuilding.id); })[0];
+          if(m){ selectedBuilding = m;
+            document.getElementById('selName').textContent = m.name||'';
+            document.getElementById('selAddr').textContent = (m.pref||'')+(m.addr||'');
+          }
+        }
+      }
+      else { loadFailed = true; }
+      if(pendingFilter){ pendingFilter = false; doFilter(); }
+    });
+  }
+
+  // ローカル絞り込み（入力のたび即実行・ネットワーク無し）
+  function doFilter(){
+    var kw = document.getElementById('kw').value.trim();
+    var hint = document.getElementById('searchHint');
+    var box = document.getElementById('results');
+    box.innerHTML = '';
+
+    if(!kw){ hint.textContent = '建物名を入力すると候補が表示されます。'; return; }
+
+    if(ALL_BUILDINGS === null){
+      if(loadFailed){ serverSearch(kw); return; } // ロード失敗時はサーバ検索にフォールバック
+      hint.textContent = '建物リストを読み込み中…'; pendingFilter = true; return;
+    }
+
+    var k = kw.toLowerCase();
+    var hits = ALL_BUILDINGS.filter(function(b){
+      var hay = ((b.name||'') + (b.area||'') + (b.pref||'') + (b.addr||'')).toLowerCase();
+      return hay.indexOf(k) >= 0;
+    });
+    renderResults(hits.slice(0, MAX_RESULTS), hits.length);
+  }
+
+  // フォールバック：サーバ側検索（プレフェッチ失敗時のみ）
+  function serverSearch(kw){
+    document.getElementById('searchHint').textContent = '検索中…';
+    jsonp('searchBuildings', { kw: kw }, function(list){ renderResults(list||[], (list||[]).length); });
+  }
+
+  function renderResults(list, total){
+    var hint = document.getElementById('searchHint');
+    var box = document.getElementById('results');
+    box.innerHTML = '';
+    if(!list.length){ hint.textContent = '該当する建物が見つかりませんでした。'; return; }
+    hint.textContent = (total > list.length) ? ('候補が多いため先頭'+list.length+'件を表示中。さらに絞り込んでください。') : '';
+    list.forEach(function(b){
+      var el = document.createElement('div');
+      el.className = 'result';
+      el.innerHTML = '<div class="nm">'+esc(b.name)+' <span class="area-tag">'+esc(b.area)+'</span></div>'
+                   + '<div class="ad">'+esc((b.pref||'')+(b.addr||''))+'</div>';
+      el.addEventListener('click', function(){ selectBuilding(b); });
+      box.appendChild(el);
+    });
+  }
+
+  function selectBuilding(b){
+    selectedBuilding = b;
+    document.getElementById('selName').textContent = b.name||'';
+    document.getElementById('selAddr').textContent = (b.pref||'')+(b.addr||'');
+    document.getElementById('buildingPick').classList.add('hidden');
+    document.getElementById('buildingSelected').classList.remove('hidden');
+  }
+  function clearSelection(){
+    selectedBuilding = null;
+    document.getElementById('results').innerHTML='';
+    document.getElementById('kw').value='';
+    document.getElementById('searchHint').textContent='建物名を入力すると候補が表示されます。';
+    document.getElementById('buildingPick').classList.remove('hidden');
+    document.getElementById('buildingSelected').classList.add('hidden');
+  }
+
+  function submit(){
+    var msg = document.getElementById('msg'); msg.className='msg';
+    var err = validate();
+    if(err){ msg.textContent=err; msg.className='msg err'; return; }
+    var btn = document.getElementById('submitBtn');
+    btn.disabled = true; btn.textContent = '登録中…';
+
+    var accessToken = liff.getAccessToken();
+    postToGas({
+      formType: 'register',
+      accessToken: accessToken,
+      displayName: profile.displayName,
+      buildingId: selectedBuilding.id,
+      room: document.getElementById('room').value.trim(),
+      name: document.getElementById('name').value.trim(),
+      tel: document.getElementById('tel').value.trim(),
+      email: document.getElementById('email').value.trim()
+    }).then(function(){
+      document.getElementById('app').classList.add('hidden');
+      document.getElementById('done').style.display='block';
+      if(liff.isInClient && liff.isInClient()){ setTimeout(function(){ liff.closeWindow(); }, 1800); }
+    }).catch(function(e){
+      btn.disabled=false; btn.textContent='この内容で登録する';
+      msg.textContent='送信エラー: '+e; msg.className='msg err';
+    });
+  }
+
+  function validate(){
+    if(!document.getElementById('name').value.trim()) return 'お名前を入力してください';
+    var email = document.getElementById('email').value.trim();
+    if(!email) return 'メールアドレスを入力してください';
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return 'メールアドレスの形式が正しくありません';
+    if(!selectedBuilding) return '建物を選択してください';
+    if(!document.getElementById('room').value.trim()) return '部屋番号を入力してください';
+    if(!document.getElementById('agree').checked) return 'プライバシーポリシーへの同意が必要です';
+    return null;
+  }
+
+  // ===== 共通：JSONP（GET読み取り）=====
+  function jsonp(action, params, cb){
+    var qs = Object.keys(params).map(function(k){ return encodeURIComponent(k)+'='+encodeURIComponent(params[k]); }).join('&');
+    var url = GAS_URL + '?action='+action + (qs ? ('&'+qs) : '');
+    fetch(url).then(function(r){ return r.json(); }).then(function(data){ cb(data); }).catch(function(){ cb(null); });
+  }
+
+  // ===== 共通：POST（書き込み・no-corsで送信）=====
+  function postToGas(payload){
+    return fetch(GAS_URL, { method:'POST', mode:'no-cors', body: JSON.stringify(payload) });
+  }
+
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+</script>
+</body>
+</html>
