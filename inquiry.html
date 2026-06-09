@@ -114,9 +114,26 @@
         return liff.getProfile().then(function(p){
           profile.userId = p.userId; profile.displayName = p.displayName||'';
           checkRegistered(p.userId);
-        }).catch(function(){ liff.login({ redirectUri: location.href }); });  // トークン切れ等→再ログイン
+        }).catch(relogin);  // トークン切れ等→一度だけ再ログイン
       })
-      .catch(function(e){ document.getElementById('loading').textContent = 'LIFF初期化エラー: ' + e; });
+      .catch(function(e){
+        var m = String((e && e.message) || e);
+        if(m.indexOf('expired')>=0 || m.indexOf('token')>=0){ relogin(); return; }
+        document.getElementById('loading').textContent = 'LIFF初期化エラー: ' + e;
+      });
+  }
+
+  // トークン切れ時の再ログイン（無限ループ防止のため1回だけ）
+  function relogin(){
+    if(location.search.indexOf('_r=1') >= 0){
+      document.getElementById('loading').textContent =
+        'ログインの有効期限が切れています。LINEのトーク画面に戻り、メニューからもう一度開いてください。';
+      return;
+    }
+    var sep = location.href.indexOf('?') >= 0 ? '&' : '?';
+    var back = location.href + sep + '_r=1';
+    try { liff.logout(); } catch(e) {}
+    liff.login({ redirectUri: back });
   }
 
   // 基本情報が登録済みか確認（未登録なら問い合わせフォームを出さずゲート表示）
