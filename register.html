@@ -155,15 +155,15 @@
 
   // 登録済みの内容を読み込んでフォームに反映
   function prefillUser(){
+    // 【一時デバッグ】必ず表示。userId と getUser の生レスポンスを出す（確認後に消す）
+    var dbg = document.createElement('div');
+    dbg.style.cssText = 'margin:8px 0;padding:8px;background:#fff8e1;border:1px solid #ffe082;border-radius:6px;font-size:11px;word-break:break-all;color:#666;';
+    dbg.textContent = '[debug] userId = ' + (profile.userId || '(空)') + ' ／ getUser 呼び出し中…';
+    var app = document.getElementById('app'); if(app) app.insertBefore(dbg, app.firstChild);
+
     jsonp('getUser', { uid: profile.userId }, function(u){
-      if(!u){
-        // 【一時デバッグ】登録が見つからない時、今のアカウントのuserIdを表示（原因切り分け用・確認後に消す）
-        var dbg = document.createElement('div');
-        dbg.style.cssText = 'margin:8px 0;padding:8px;background:#fff8e1;border:1px solid #ffe082;border-radius:6px;font-size:11px;word-break:break-all;color:#666;';
-        dbg.textContent = '[debug] このアカウントの userId: ' + (profile.userId || '(取得できず)');
-        var app = document.getElementById('app'); if(app) app.insertBefore(dbg, app.firstChild);
-        return;
-      }
+      dbg.textContent = '[debug] userId = ' + (profile.userId || '(空)') + ' ／ getUser = ' + JSON.stringify(u);
+      if(!u || Array.isArray(u)) return;   // null＝該当なし / 配列＝通信失敗
       if(u.name)  document.getElementById('name').value = u.name;
       if(u.tel)   document.getElementById('tel').value = u.tel;
       if(u.email) document.getElementById('email').value = u.email;
