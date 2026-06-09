@@ -44,6 +44,12 @@
 
 <div id="loading" class="loading">読み込み中…</div>
 
+<div id="gate" class="wrap hidden" style="text-align:center;padding:40px 20px;">
+  <h1 style="font-size:18px;margin-bottom:12px;">基本情報の登録が必要です</h1>
+  <p style="color:#555;line-height:1.7;margin-bottom:24px;">お問い合わせの前に、お住まいの建物・お部屋・ご連絡先のご登録をお願いします。<br>下のボタンから登録してください。</p>
+  <a id="gateRegBtn" href="#" style="display:inline-block;background:#06c755;color:#fff;font-weight:700;text-decoration:none;padding:14px 28px;border-radius:10px;">基本情報を登録する</a>
+</div>
+
 <div id="app" class="wrap hidden">
   <div class="head">
     <h1>ご入居者様 お問い合わせ</h1>
@@ -86,7 +92,8 @@
 <script>
   // ===== 設定（ここだけ書き換える）=====
   var LIFF_ID = '2010296392-ndiczLvq';
-  var GAS_URL = 'https://script.google.com/macros/s/AKfycbybgmPqNA_YSfQCjlF7T51FyJHNuK9sx4ueiLeyNfCQ9wC6xbdaA9-2gFXlj84IRhANPQ/exec';
+  var REGISTER_LIFF = 'https://liff.line.me/2010296392-M3917y47';   // 基本情報の登録フォーム
+  var GAS_URL = 'ここにGASの /exec URL を貼る';
   // =====================================
 
   var CATEGORY = (new URLSearchParams(location.search).get('category')) || '';
@@ -106,10 +113,28 @@
         if(!liff.isLoggedIn()){ liff.login(); return; }
         return liff.getProfile().then(function(p){
           profile.userId = p.userId; profile.displayName = p.displayName||'';
-          ready();
+          checkRegistered(p.userId);
         });
       })
       .catch(function(e){ document.getElementById('loading').textContent = 'LIFF初期化エラー: ' + e; });
+  }
+
+  // 基本情報が登録済みか確認（未登録なら問い合わせフォームを出さずゲート表示）
+  function checkRegistered(uid){
+    var cb = 'reg_' + Date.now();
+    var s = document.createElement('script');
+    function cleanup(){ try{ delete window[cb]; }catch(e){} if(s.parentNode) s.parentNode.removeChild(s); }
+    window[cb] = function(res){ cleanup(); if(res && res.registered){ ready(); } else { showGate(); } };
+    s.onerror = function(){ cleanup(); ready(); }; // 確認に失敗したらフォームは出す（送信時にサーバ側で再チェックされる）
+    s.src = GAS_URL + (GAS_URL.indexOf('?')>=0?'&':'?') + 'action=isRegistered&uid=' + encodeURIComponent(uid) + '&callback=' + cb;
+    document.body.appendChild(s);
+  }
+
+  function showGate(){
+    document.getElementById('loading').classList.add('hidden');
+    var btn = document.getElementById('gateRegBtn');
+    btn.setAttribute('href', REGISTER_LIFF);
+    document.getElementById('gate').classList.remove('hidden');
   }
 
   function ready(){
