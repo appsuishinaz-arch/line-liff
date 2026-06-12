@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>担当者ログイン｜入居者問合せ</title>
+<style>
+  :root{ --primary:#1F6F4A; --primary-bg:#E7F4EC; --border:#e5e7eb; --text-1:#1f2937; --text-2:#6b7280; --text-3:#9ca3af; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; font-family:-apple-system,"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif; background:#f7f8fa; color:var(--text-1); }
+  .hidden{ display:none !important; }
+  .topbar{ background:var(--primary); color:#fff; padding:12px 16px; display:flex; align-items:center; justify-content:space-between; }
+  .topbar h1{ font-size:15px; margin:0; display:flex; align-items:center; gap:8px; }
+  .badge{ background:#e11d48; color:#fff; font-size:12px; font-weight:700; border-radius:999px; padding:1px 8px; min-width:20px; text-align:center; }
+  .topbar button{ background:rgba(255,255,255,.15); color:#fff; border:none; padding:6px 12px; border-radius:6px; font-size:13px; cursor:pointer; }
+  .wrap{ max-width:680px; margin:0 auto; padding:16px; }
+
+  /* ログイン */
+  .login{ max-width:360px; margin:60px auto; background:#fff; border:1px solid var(--border); border-radius:12px; padding:28px 24px; }
+  .login h2{ font-size:16px; margin:0 0 4px; }
+  .login p{ font-size:12px; color:var(--text-2); margin:0 0 20px; }
+  .login label{ font-size:12px; color:var(--text-2); display:block; margin:12px 0 4px; }
+  .login input{ width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:8px; font-size:14px; }
+  .login button{ width:100%; margin-top:20px; background:var(--primary); color:#fff; border:none; padding:12px; border-radius:8px; font-weight:700; font-size:15px; cursor:pointer; }
+  .err{ color:#e11d48; font-size:12px; margin-top:12px; min-height:16px; }
+
+  /* 一覧 */
+  .meta{ font-size:13px; color:var(--text-2); margin:4px 0 14px; }
+  .card{ background:#fff; border:1px solid var(--border); border-radius:10px; padding:12px 14px; margin-bottom:10px; cursor:pointer; position:relative; }
+  .card.unread{ border-left:4px solid #e11d48; }
+  .card .h{ font-size:11px; color:var(--text-3); margin-bottom:3px; }
+  .card .b{ font-size:14px; white-space:pre-wrap; }
+  .card .f{ font-size:11px; color:var(--text-2); margin-top:6px; }
+  .dot{ position:absolute; top:12px; right:12px; width:9px; height:9px; border-radius:50%; background:#e11d48; }
+  .empty{ text-align:center; color:var(--text-3); padding:40px 0; font-size:13px; }
+  .loading{ text-align:center; color:var(--text-3); padding:30px 0; }
+</style>
+</head>
+<body>
+
+<!-- ログイン画面 -->
+<div id="loginView" class="login hidden">
+  <h2>担当者ログイン</h2>
+  <p>会社で登録されているメールアドレスでログインしてください。</p>
+  <label>メールアドレス</label>
+  <input id="email" type="email" autocomplete="username" placeholder="you@az-stat.com">
+  <label>パスワード</label>
+  <input id="password" type="password" autocomplete="current-password" placeholder="パスワード">
+  <button id="loginBtn" onclick="doLogin()">ログイン</button>
+  <div class="err" id="loginErr"></div>
+</div>
+
+<!-- 通知センター -->
+<div id="appView" class="hidden">
+  <div class="topbar">
+    <h1>自分宛コメント <span class="badge hidden" id="badge">0</span></h1>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <button onclick="refresh()">更新</button>
+      <button onclick="doLogout()">ログアウト</button>
+    </div>
+  </div>
+  <div class="wrap">
+    <div class="meta" id="who"></div>
+    <div id="list"><div class="loading">読み込み中…</div></div>
+  </div>
+</div>
+
+<div id="boot" class="loading" style="padding-top:60px;">読み込み中…</div>
+
+<!-- Firebase（Email/Password 認証） -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script>
+  /* ===== ここを自分の環境に合わせる ===== */
+  // Firebase コンソール → プロジェクトの設定 → マイアプリ（ウェブ）の構成をそのまま貼る
+  var firebaseConfig = {
+    apiKey: "AIzaSyALpJzIpx6wB0o89fyofTmgh0cv6Jd3gzM",
+    authDomain: "line-contact-b756e.firebaseapp.com",
+    projectId: "line-contact-b756e",
+    storageBucket: "line-contact-b756e.firebasestorage.app",
+    messagingSenderId: "854954521540",
+    appId: "1:854954521540:web:e3274d5cc2e8344e612a91",
+    measurementId: "G-73F80QS467"
+  };
+  // GASのexec URL（管理画面と同じ）
+  var GAS_URL = 'https://script.google.com/macros/s/AKfycbybgmPqNA_YSfQCjlF7T51FyJHNuK9sx4ueiLeyNfCQ9wC6xbdaA9-2gFXlj84IRhANPQ/exec';
+  // 管理キー（GASのスクリプトプロパティ ADMIN_KEY と同じ）
+  var ADMIN_KEY = 'az-staff-7Kp9x2';
+  /* ===================================== */
+
+  var me = null;          // { id, name, email }
+  var STAFF = [];
+  var pollTimer = null;
+
+  firebase.initializeApp(firebaseConfig);
+  firebase.auth().onAuthStateChanged(function(user){
+    document.getElementById('boot').classList.add('hidden');
+    if(user){ onLoggedIn(user); }
+    else { showLogin(); }
+  });
+
+  function showLogin(){
+    stopPoll();
+    document.getElementById('appView').classList.add('hidden');
+    document.getElementById('loginView').classList.remove('hidden');
+  }
+
+  function doLogin(){
+    var email = document.getElementById('email').value.trim();
+    var pass = document.getElementById('password').value;
+    document.getElementById('loginErr').textContent = '';
+    document.getElementById('loginBtn').disabled = true;
+    firebase.auth().signInWithEmailAndPassword(email, pass)
+      .catch(function(e){
+        document.getElementById('loginBtn').disabled = false;
+        document.getElementById('loginErr').textContent = 'ログインできませんでした（メール／パスワードをご確認ください）。';
+      });
+  }
+  function doLogout(){ firebase.auth().signOut(); }
+
+  function onLoggedIn(user){
+    document.getElementById('loginView').classList.add('hidden');
+    document.getElementById('appView').classList.remove('hidden');
+    // 担当者マスタの通知メールと突合して staffId を特定
+    api('staffList', {}).then(function(list){
+      STAFF = list || [];
+      var em = (user.email||'').trim().toLowerCase();
+      me = STAFF.filter(function(s){ return s.email === em; })[0] || null;
+      if(!me){
+        document.getElementById('who').textContent = 'このメール（'+em+'）は担当者マスタに見つかりませんでした。担当者マスタの「通知メール」に登録してください。';
+        document.getElementById('list').innerHTML = '';
+        return;
+      }
+      document.getElementById('who').textContent = me.name + ' さん宛のコメント';
+      refresh();
+      startPoll();
+    });
+  }
+
+  function refresh(){
+    if(!me) return;
+    api('myMentions', { staffId: me.id }).then(function(res){
+      res = res || { unread:0, items:[] };
+      setBadge(res.unread||0);
+      renderList(res.items||[]);
+    });
+  }
+
+  function setBadge(n){
+    var b = document.getElementById('badge');
+    b.textContent = n;
+    if(n>0) b.classList.remove('hidden'); else b.classList.add('hidden');
+    document.title = (n>0?('('+n+') '):'') + '自分宛コメント';
+  }
+
+  function renderList(items){
+    var box = document.getElementById('list');
+    if(!items.length){ box.innerHTML = '<div class="empty">自分宛のコメントはありません。</div>'; return; }
+    box.innerHTML = items.map(function(m){
+      var head = esc(m.caseNo)+' ・ '+esc(m.building||'')+(m.room?(' '+esc(m.room)):'');
+      return '<div class="card '+(m.read?'':'unread')+'" onclick="openItem('+JSON.stringify(m.key).replace(/"/g,'&quot;')+',\''+esc(m.caseNo)+'\')">'
+        + (m.read?'':'<span class="dot"></span>')
+        + '<div class="h">'+head+'</div>'
+        + '<div class="b">'+esc(m.text)+'</div>'
+        + '<div class="f">@'+esc(m.names||'')+' ・ '+esc(m.at||'')+'</div>'
+        + '</div>';
+    }).join('');
+  }
+
+  // クリック：既読にして、管理画面の該当案件を開く
+  function openItem(key, caseNo){
+    api('markRead', { staffId: me.id, mkey: key }).then(function(){ refresh(); });
+    var url = GAS_URL + '?page=admin&key=' + encodeURIComponent(ADMIN_KEY) + '&case=' + encodeURIComponent(caseNo);
+    window.open(url, '_blank');
+  }
+
+  function startPoll(){ stopPoll(); pollTimer = setInterval(refresh, 20000); } // 20秒ごとに未読を更新
+  function stopPoll(){ if(pollTimer){ clearInterval(pollTimer); pollTimer=null; } }
+
+  // GAS呼び出し（fetch・JSON）
+  function api(action, params){
+    var qs = Object.keys(params).map(function(k){ return encodeURIComponent(k)+'='+encodeURIComponent(params[k]); }).join('&');
+    var url = GAS_URL + '?action='+action + (qs?('&'+qs):'') + '&key=' + encodeURIComponent(ADMIN_KEY);
+    return fetch(url).then(function(r){ return r.json(); }).catch(function(){ return null; });
+  }
+
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, function(c){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]; }); }
+</script>
+</body>
+</html>
